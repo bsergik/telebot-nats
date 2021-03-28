@@ -1,0 +1,14 @@
+# Ignore everything
+**
+
+# Allow files and directories
+!go.mod
+!go.sum
+!Makefile
+!/cmd/
+!/pkg/
+!/internal/
+
+# Ignore unnecessary files inside allowed directories
+# This should go after the allowed directories
+**/tests

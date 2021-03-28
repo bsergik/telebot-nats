@@ -1,0 +1,90 @@
+version: '3.3'
+
+networks:
+  default:
+    driver: bridge
+  internal:
+    driver: bridge
+    internal: true
+
+services:
+
+  database:
+    image: postgres:13.1-alpine
+    shm_size: 256MB
+    environment:
+      TERM: linux
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - ./build/data/postgres.conf:/etc/postgresql/postgresql.conf:ro
+      - ./build/data/postgresql-data/:/var/lib/postgresql/data:rw
+    cap_add:
+      - SYS_NICE # CAP_SYS_NICE
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    networks:
+      - internal
+    # logging:
+    #   driver: loki
+    #   options:
+    #     loki-url: "http://127.0.0.1:3100/loki/api/v1/push"
+    #     labels: production_status
+    # labels:
+    #   production_status: "release"
+    # restart: always
+
+  stan:
+    image: nats-streaming:0.21.1-alpine3.13
+    command: -store sql --sql_driver postgres --sql_source "user=postgres password=postgres dbname=stan sslmode=disable port=5432 host=database" -cid my-cluster-id -m 8222
+    volumes:
+      - ./build/data/stan:/data:rw
+    networks:
+      - internal
+    # logging:
+    #   driver: loki
+    #   options:
+    #     loki-url: "http://127.0.0.1:3100/loki/api/v1/push"
+    #     labels: production_status
+    # labels:
+    #   production_status: "release"
+    # restart: always
+    depends_on:
+      - database
+
+  telebot-nats:
+    image: github.com/bsergik/telebot-nats:1.0.0
+    environment:
+      BOT_DRY_RUN: 0
+      BOT_INIT_DB: 1
+      BOT_DB_PORT: 5432
+      BOT_DB_HOST: database
+      BOT_DB_NAME: telebot
+      BOT_DB_USER: postgres
+      BOT_DB_PASSWORD: postgres
+      BOT_TELEGRAM_TOKEN: "token"
+      BOT_MASTER_USER_ID: 1234567890
+      BOT_NATS_ADDRESS: nats://stan:4222
+      BOT_CLUSTERID: my-cluster-id
+      BOT_CLIENTID: telebot-nats-1
+      BOT_SUBJECT: telebot.v1.errors
+      BOT_QUEUE_GROUP: telebot.v1.qgroup
+      BOT_DURABLE_NAME: telebot.v1.qgroup-durable
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    networks:
+      - default
+      - internal
+    # logging:
+    #   driver: loki
+    #   options:
+    #     loki-url: "http://127.0.0.1:3100/loki/api/v1/push"
+    #     labels: production_status
+    # labels:
+    #   production_status: "release"
+    # restart: always
+    depends_on:
+      - database
+      - stan
